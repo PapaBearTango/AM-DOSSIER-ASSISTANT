@@ -1,0 +1,197 @@
+
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+  <title>AM Dossier Assistant</title>
+
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      color: #263238;
+      background: #f6f8fa;
+    }
+
+    h2 {
+      margin-top: 0;
+      color: #17324d;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    label {
+      display: block;
+      margin: 16px 0 6px;
+      font-weight: bold;
+    }
+
+    input {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 10px;
+      font-size: 15px;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 16px;
+      padding: 12px;
+      background: #17324d;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 15px;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #status {
+      margin-top: 16px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h2>AM Dossier Assistant</h2>
+    <p>Architectural Metals - Testversie 1.0</p>
+
+    <label for="dossier">AM-dossiernummer</label>
+    <input
+      id="dossier"
+      value="AM260158"
+      maxlength="20"
+    >
+
+    <button id="apply" disabled>
+      AM-nummer toevoegen
+    </button>
+
+    <div id="status" role="status" aria-live="polite">
+      Outlook-verbinding controleren...
+    </div>
+  </div>
+
+  <script>
+    const statusBox = document.getElementById("status");
+    const button = document.getElementById("apply");
+
+    function showStatus(message) {
+      statusBox.textContent = message;
+    }
+
+    Office.onReady(function (info) {
+      if (info.host !== Office.HostType.Outlook) {
+        showStatus(
+          "Open deze toepassing vanuit Outlook."
+        );
+        return;
+      }
+
+      const item = Office.context.mailbox.item;
+
+      if (!item || !item.subject ||
+          typeof item.subject.setAsync !== "function") {
+        showStatus(
+          "Open eerst een e-mail in de opstelmodus."
+        );
+        return;
+      }
+
+      button.disabled = false;
+      showStatus("Klaar om het onderwerp te wijzigen.");
+    });
+
+    button.addEventListener("click", function () {
+      const item = Office.context.mailbox.item;
+
+      const dossier = document.getElementById("dossier")
+        .value.trim().toUpperCase();
+
+      if (!/^AM[0-9]{6}$/.test(dossier)) {
+        showStatus(
+          "Gebruik een nummer zoals AM260158."
+        );
+        return;
+      }
+
+      button.disabled = true;
+      showStatus("Onderwerp wordt opgehaald...");
+
+      item.subject.getAsync(function (result) {
+        if (result.status !== Office.AsyncResultStatus.Succeeded) {
+          showStatus(
+            "Fout bij lezen: " + result.error.message
+          );
+          button.disabled = false;
+          return;
+        }
+
+        const original = result.value || "";
+        const prefix = "[" + dossier + "]";
+
+        // Voorkom dubbele AM-nummers.
+        if (/\[AM[0-9]{6}\]/i.test(original)) {
+          showStatus(
+            "Het onderwerp bevat al een AM-dossiernummer:\n" +
+            original
+          );
+          button.disabled = false;
+          return;
+        }
+
+        // Behoud een bestaande RE:/FW:-prefix.
+        const match = original.match(
+          /^((?:(?:RE|FW|FWD|AW|WG)\s*:\s*)+)/i
+        );
+
+        const replyPrefix = match ? match[0] : "";
+        const remainder = original.slice(replyPrefix.length);
+
+        const newSubject =
+          replyPrefix + prefix + " " + remainder;
+
+        item.subject.setAsync(
+          newSubject,
+          function (writeResult) {
+            if (
+              writeResult.status ===
+              Office.AsyncResultStatus.Succeeded
+            ) {
+              showStatus(
+                "Onderwerp succesvol aangepast:\n\n" +
+                newSubject
+              );
+            } else {
+              showStatus(
+                "Aanpassen mislukt:\n" +
+                writeResult.error.message
+              );
+            }
+
+            button.disabled = false;
+          }
+        );
+      });
+    });
+  </script>
+</body>
+</html>
